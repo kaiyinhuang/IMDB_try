@@ -9,7 +9,9 @@ Based on the Hugging Face Transformers library, use the BERT model to perform se
    pip install -r requirements.txt
 
 2. Run training:
+   ```bash
    python src/train.py
 
-3. Model inference:
+4. Model inference:
+   ```bash
    python src/inference.py --text "This movie was amazing!"
