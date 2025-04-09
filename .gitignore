@@ -172,3 +172,10 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Ignore model files and training results
+models/
+results/
+saved_model/
+*.bin
+*.pth
