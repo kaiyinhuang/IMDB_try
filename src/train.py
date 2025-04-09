@@ -1,5 +1,6 @@
-# train.py
+# src/train.py
 import argparse
+import numpy as np
 from datasets import load_dataset
 from transformers import (
     AutoTokenizer,
@@ -9,53 +10,51 @@ from transformers import (
 )
 import evaluate
 
-def main():
-    # 解析命令行参数
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model_name", type=str, default="bert-base-uncased")
-    parser.add_argument("--lr", type=float, default=2e-5)
-    parser.add_argument("--batch_size", type=int, default=8)
-    parser.add_argument("--epochs", type=int, default=3)
-    args = parser.parse_args()
-
+def main(config):
     # 1. 加载数据集
-    dataset = load_dataset("imdb")
-    train_dataset = dataset["train"]
-    val_dataset = dataset["test"]
-
-    # 2. 加载模型和分词器
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name)
-    model = AutoModelForSequenceClassification.from_pretrained(args.model_name, num_labels=2)
-
-    # 3. 数据预处理
-    def tokenize_function(examples):
-        return tokenizer(examples["text"], padding="max_length", truncation=True, max_length=256)
+    dataset = load_dataset(config["data"]["dataset_name"])
     
-    train_dataset = train_dataset.map(tokenize_function, batched=True)
-    val_dataset = val_dataset.map(tokenize_function, batched=True)
-    train_dataset.set_format("torch", columns=["input_ids", "attention_mask", "label"])
-    val_dataset.set_format("torch", columns=["input_ids", "attention_mask", "label"])
-
-    # 4. 定义训练参数
-    training_args = TrainingArguments(
-        output_dir="./results",
-        evaluation_strategy="epoch",
-        learning_rate=args.lr,
-        per_device_train_batch_size=args.batch_size,
-        per_device_eval_batch_size=args.batch_size,
-        num_train_epochs=args.epochs,
-        fp16=True,
-        report_to="none"
+    # 2. 数据预处理
+    tokenizer = AutoTokenizer.from_pretrained(config["model"]["model_name"])
+    
+    def tokenize_function(examples):
+        return tokenizer(
+            examples["text"],
+            padding="max_length",
+            truncation=True,
+            max_length=config["data"]["max_length"]
+        )
+    
+    tokenized_dataset = dataset.map(tokenize_function, batched=True)
+    train_dataset = tokenized_dataset["train"]
+    val_dataset = tokenized_dataset["validation"]
+    
+    # 3. 加载模型
+    model = AutoModelForSequenceClassification.from_pretrained(
+        config["model"]["model_name"],
+        num_labels=config["model"]["num_labels"]
     )
-
-    # 5. 定义评估指标
+    
+    # 4. 定义评估指标
     accuracy = evaluate.load("accuracy")
     def compute_metrics(eval_pred):
         logits, labels = eval_pred
         predictions = np.argmax(logits, axis=-1)
         return accuracy.compute(predictions=predictions, references=labels)
-
-    # 6. 启动训练
+    
+    # 5. 训练参数设置
+    training_args = TrainingArguments(
+        output_dir=config["training"]["output_dir"],
+        learning_rate=config["training"]["learning_rate"],
+        per_device_train_batch_size=config["training"]["per_device_train_batch_size"],
+        num_train_epochs=config["training"]["num_train_epochs"],
+        evaluation_strategy="epoch",
+        save_strategy="epoch",
+        fp16=config["training"]["fp16"],
+        report_to="wandb" if config["training"]["use_wandb"] else "none",
+    )
+    
+    # 6. 训练器
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -63,11 +62,16 @@ def main():
         eval_dataset=val_dataset,
         compute_metrics=compute_metrics,
     )
+    
+    # 7. 启动训练
     trainer.train()
-
-    # 7. 保存模型
-    model.save_pretrained("./saved_model")
-    tokenizer.save_pretrained("./saved_model")
+    
+    # 8. 保存模型
+    model.save_pretrained(config["training"]["output_dir"])
 
 if __name__ == "__main__":
-    main()
+    import yaml
+    # 加载配置文件
+    with open("configs/full_ft.yaml") as f:
+        config = yaml.safe_load(f)
+    main(config)
