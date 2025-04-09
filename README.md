@@ -11,7 +11,13 @@ Based on the Hugging Face Transformers library, use the BERT model to perform se
 2. Run training:
    ```bash
    python src/train.py
+   --model_name bert-base-uncased \
+    --lr 2e-5 \
+    --batch_size 8 \
+    --epochs 3
 
 4. Model inference:
    ```bash
-   python src/inference.py --text "This movie was amazing!"
+   python src/inference.py
+   --text "This movie was amazing!"
+   --model_dir ./saved_model
